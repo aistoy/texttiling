@@ -1,0 +1,9 @@
+spacy
+matplotlib
+numpy
+networkx
+python-louvain
+transformers
+torch
+scipy
+bert-score
