@@ -76,9 +76,78 @@ def get_similarity_scores(vec_a, vec_b, model):
         # Compute cosine similarity for each pair of strings
         similarities = []
         for i in range(len(embeddings_a)):
-            similarity = 1 - cosine(embeddings_a[i][0], embeddings_b[i][0])
+            # --- MODIFICATION START ---
+            # Cosine similarity can be between -1 and 1. We remap it to [0, 1] to ensure non-negative weights for the graph.
+            cosine_similarity = 1 - cosine(embeddings_a[i][0], embeddings_b[i][0])
+            similarity = (cosine_similarity + 1) / 2
+            # --- MODIFICATION END ---
             similarities.append(similarity)
     return similarities
+
+# def get_similarity_scores(vec_a, vec_b, model):
+#     """
+#     This function calculates the similarity scores between pairs of text chunks using the specified model.
+#     It supports several types of models, including BERT, sequence matcher, Jaccard index, and transformers from HuggingFace.
+
+#     Parameters:
+#     - vec_a, vec_b: Lists of text chunks to be compared. They must have the same length, and the comparison is made
+#       between corresponding pairs (i.e., vec_a[i] is compared with vec_b[i]).
+#     - model: A string indicating the type of model to be used for the comparison. Current valid values are "bert", "seqmatch", "jaccard", 
+#       and the name of any transformer available from HuggingFace.
+
+#     Returns:
+#     - similarities: A list of similarity scores for each pair of text chunks. The score ranges from 0 (no similarity) to 1 (identical).
+#     """
+#     vec_a = [x.lower() for x in vec_a]  # convert vector a to lowercase
+#     vec_b = [x.lower() for x in vec_b]  # convert vector b to lowercase
+
+#     if model == "bert":
+#         # BERTScore returns three values: Precision, Recall, and F1 Score
+#         # Here we use F1 Score as the similarity measure
+#         _, _, f1_score = score(vec_a, vec_b, lang='en', model_type='bert-base-uncased')
+
+#         # f1_score is a tensor with the F1 score for each pair of sentences.
+#         # Since we only have one pair, we take the first (and only) element.
+#         similarities = [f1_score[i].item() for i in range(len(vec_a))]
+#     elif model == "seqmatch":
+#         translation_table = str.maketrans('', '', string.punctuation)
+#         similarities = []
+#         for xa, xb in zip(vec_a, vec_b):
+#             xa = xa.translate(translation_table)
+#             xb = xb.translate(translation_table)
+#             sm = SequenceMatcher(None, xa, xb).ratio()
+#             similarities.append(sm)
+#     elif model == "jaccard":
+#         translation_table = str.maketrans('', '', string.punctuation)
+#         similarities = []
+#         for xa, xb in zip(vec_a, vec_b):
+#             a_words = set(xa.translate(translation_table).split())
+#             b_words = set(xb.translate(translation_table).split())
+#             js = len(a_words & b_words) / len(a_words | b_words)
+#             similarities.append(js)
+#     else: 
+#         # any transformer chosen from HuggingFace can be used here
+#         similarities = []       
+#         tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/"+model)
+#         model = AutoModel.from_pretrained("sentence-transformers/"+model)
+#         embeddings_a = []
+#         embeddings_b = []
+
+#         # Compute embeddings for each string in the lists
+#         for i in range(len(vec_a)):
+#             a_tokens = tokenizer(vec_a[i], padding=True, truncation=True, max_length=256, return_tensors='pt')
+#             b_tokens = tokenizer(vec_b[i], padding=True, truncation=True, max_length=256, return_tensors='pt')
+
+#             with torch.no_grad():
+#                 embeddings_a.append(model(**a_tokens).last_hidden_state.mean(dim=1))
+#                 embeddings_b.append(model(**b_tokens).last_hidden_state.mean(dim=1))
+
+#         # Compute cosine similarity for each pair of strings
+#         similarities = []
+#         for i in range(len(embeddings_a)):
+#             similarity = 1 - cosine(embeddings_a[i][0], embeddings_b[i][0])
+#             similarities.append(similarity)
+#     return similarities
 
 def compact_clusters(clusters):
     """
@@ -216,19 +285,81 @@ def create_tiles(doc_path, model='bert'):
     # Generate the text tiling in the form [0, th1, th2.... thN, len(sentences)-1] 
     return [c[0] for c in tiles]+[tiles[-1][-1]]
 
-def plot_tiles(tiles, labels):
+# def plot_tiles(tiles, labels):
+#     """
+#     This function generates a stacked bar plot for a list of tile vectors.
+    
+#     Parameters:
+#     - tiles: A list of tile vectors. Each tile vector is a list of numeric values.
+#     - labels: A list of labels for the tile vectors, typically representing the names or identifiers of the vectors.
+
+#     This function generates a distinct color for each segment of the first vector (master vector). 
+#     For the other vectors, the color of the segments depends on which thresholds of the master vector 
+#     they fall between. This helps to visually compare the distributions of the different vectors.
+
+#     This function doesn't return anything; it directly creates a plot using matplotlib.
+#     """
+
+#     # Generate distinct colors
+#     colors = list(mcolors.TABLEAU_COLORS.values())[:10] 
+#     # Number of vectors
+#     N = len(tiles)
+#     # The x locations for the vectors
+#     ind = np.arange(N)
+
+#     # The width of the bars
+#     width = 0.7
+#     # Figure and axis
+#     fig, ax = plt.subplots()
+#     # Master vector is the first vector
+#     master_vector = tiles[0]
+
+#     # Iterate over each vector
+#     for i in range(N):
+#         # Initialize the bottom for the stacking purpose
+#         bottom = 0
+#         # Iterate over each element in vector
+#         for j in range(len(tiles[i])):
+#             # Create a bar from bottom to the value
+
+#             # Find the color based on the master thresholds
+#             if i == 0:
+#                 color_index = j
+#             else:
+#                 color_index = 0
+#                 for k in range(len(master_vector)):
+#                     if k != 0 and tiles[i][j] > master_vector[k] and tiles[i][j-1] < master_vector[k]:
+#                         color_index = k
+#                         break
+#                     elif tiles[i][j] <= master_vector[k]:
+#                         color_index = k
+#                         break
+
+#             # Create the bar with the selected color
+#             ax.bar(i, tiles[i][j] - bottom, bottom=bottom, color=colors[color_index%10], edgecolor='black', width=width)
+#             # Update the bottom for the next bar
+#             bottom = tiles[i][j]
+
+#     # Add labels at the x ticks
+#     plt.xticks(ind, labels, rotation='horizontal')
+#     # You can uncomment the following line if you want to keep the y ticks.
+#     # plt.yticks([])
+
+#     # Show the plot
+#     plt.show()
+
+def plot_tiles(tiles, labels, output_filename="tiling_plot.png"):
     """
-    This function generates a stacked bar plot for a list of tile vectors.
+    This function generates a stacked bar plot for a list of tile vectors and saves it to a file.
     
     Parameters:
     - tiles: A list of tile vectors. Each tile vector is a list of numeric values.
     - labels: A list of labels for the tile vectors, typically representing the names or identifiers of the vectors.
+    - output_filename: The name of the file to save the plot to. Default is "tiling_plot.png".
 
     This function generates a distinct color for each segment of the first vector (master vector). 
     For the other vectors, the color of the segments depends on which thresholds of the master vector 
     they fall between. This helps to visually compare the distributions of the different vectors.
-
-    This function doesn't return anything; it directly creates a plot using matplotlib.
     """
 
     # Generate distinct colors
@@ -241,7 +372,7 @@ def plot_tiles(tiles, labels):
     # The width of the bars
     width = 0.7
     # Figure and axis
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6)) # You can adjust figsize for better layout
     # Master vector is the first vector
     master_vector = tiles[0]
 
@@ -275,9 +406,25 @@ def plot_tiles(tiles, labels):
     plt.xticks(ind, labels, rotation='horizontal')
     # You can uncomment the following line if you want to keep the y ticks.
     # plt.yticks([])
+    
+    # Add a title and labels for clarity
+    ax.set_title('Comparison of Text Tiling Models')
+    ax.set_ylabel('Sentence Index')
 
-    # Show the plot
-    plt.show()
+
+    # --- MODIFICATION START ---
+    
+    # Instead of showing the plot, save it to a file.
+    # The dpi (dots per inch) argument controls the resolution of the saved image.
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    
+    # It's good practice to close the plot to free up memory
+    plt.close(fig)
+
+    print(f"Plot saved to {output_filename}")
+
+    # --- MODIFICATION END ---```
+
 
 def tiling_score(master, candidate):
     """
@@ -327,8 +474,9 @@ def tiling_score(master, candidate):
 models = {
     "bert":"BERT Score",
     "paraphrase-MiniLM-L6-v2":"paraphrase-MiniLM-L6-v2",
-    "seqmatch":"SequenceMatcher",
-    "jaccard":"Jaccard"
+    "paraphrase-multilingual-MiniLM-L12-v2":"paraphrase-multilingual-MiniLM-L12-v2",
+    # "seqmatch":"SequenceMatcher",
+    # "jaccard":"Jaccard"
 }
 
 labels = []
